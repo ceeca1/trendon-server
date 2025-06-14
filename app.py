@@ -1,20 +1,22 @@
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 from bs4 import BeautifulSoup
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
+import requests as req
 import time
 import json
-import requests as req
 import pandas as pd
 import openai
 import difflib
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
 
 # ✅ OpenAI API Key
-openai.api_key = "OPENAI_API_KEY"
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # ✅ 데이터 불러오기
 stock_db = pd.read_csv("naver_theme_stocks_full.csv")
@@ -28,23 +30,13 @@ with open("keyword.json", encoding="utf-8") as f:
 @app.route('/news')
 def get_news():
     keyword = request.args.get('q', '속보')
-    options = Options()
-    options.add_argument('--headless')
-    options.add_argument('--disable-gpu')
-    driver = webdriver.Chrome(options=options)
-    driver.get(f'https://search.daum.net/search?w=news&q={keyword}')
-    time.sleep(2)
-
-    for _ in range(3):
-        driver.execute_script("window.scrollBy(0, 1000);")
-        time.sleep(1)
-
-    soup = BeautifulSoup(driver.page_source, 'html.parser')
-    driver.quit()
+    url = f"https://search.daum.net/search?w=news&q={keyword}"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    res = req.get(url, headers=headers)
+    soup = BeautifulSoup(res.text, 'html.parser')
 
     news_list = []
     items = soup.select('div.c-item-content')
-
     for item in items[:10]:
         title_tag = item.select_one('div.item-title a')
         img_tag = item.select_one('div.item-thumb img')
@@ -183,13 +175,13 @@ def analyze_news():
             continue
         transaction_amount = info["price"] * info["volume"]
         stock_list.append({
-        "name": info["name"],
-        "price": info["price"],           # 숫자 그대로
-        "rate": info["rate"],
-        "volume": info["volume"],         # 숫자 그대로
-        "transaction_amount": transaction_amount,  # ✅ 직접 계산해서 넣음
-        "link": info["link"]
-    })
+            "name": info["name"],
+            "price": info["price"],
+            "rate": info["rate"],
+            "volume": info["volume"],
+            "transaction_amount": transaction_amount,
+            "link": info["link"]
+        })
 
     stock_list = sorted(stock_list, key=lambda x: x["transaction_amount"], reverse=True)[:5]
 
